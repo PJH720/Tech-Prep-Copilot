@@ -1,2 +1,20 @@
-# Tech-Prep-Copilot
-Tech-Prep Copilot은 LangChain의 RAG(검색 증강 생성) 기술을 활용하여,  특정 IT 기업의 최신 채용 공고(JD)와 기술 블로그 데이터를 분석하고  사용자의 이력서를 기반으로 맞춤형 모의 면접을 진행하는 서비스입니다. 
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/0731cda5-e31e-43b9-9a1b-0c4a8a6fc160
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
