@@ -1,21 +1,33 @@
-# LangChain & AI
-langchain
-langchain-openai
-langchain-community
-langchain-huggingface
-langchain-chroma
-tavily-python
+# ── LangChain 스택 ────────────────────────────────────────────────────────────
+langchain>=0.3
+langchain-openai>=0.2
+langchain-community>=0.3
+langchain-huggingface>=0.1
+langchain-chroma>=0.1
 
-# Data Parsing & Crawling
-pypdf
-beautifulsoup4
-requests
-pandas
+# ── 벡터 DB ───────────────────────────────────────────────────────────────────
+chromadb>=0.5
 
-# Database & Environment
-chromadb
-python-dotenv
+# ── 임베딩 (HuggingFace, 로컬 GPU) ───────────────────────────────────────────
+sentence-transformers>=3.0
+torch>=2.2                   # GPU: pip install torch --index-url https://download.pytorch.org/whl/cu121
 
-# Frontend (Next.js와 통신용 혹은 FastAPI 활용 시)
-fastapi
-uvicorn
+# ── 크롤링 ────────────────────────────────────────────────────────────────────
+requests>=2.32
+beautifulsoup4>=4.12
+playwright>=1.44             # 토스 JS 렌더링 수집 시만 필요 (선택)
+
+# ── 데이터 처리 ───────────────────────────────────────────────────────────────
+pandas>=2.2
+pypdf>=4.0
+
+# ── AI API ────────────────────────────────────────────────────────────────────
+openai>=1.30
+tavily-python>=0.3
+
+# ── 서버 ─────────────────────────────────────────────────────────────────────
+fastapi>=0.111
+uvicorn>=0.30
+
+# ── 환경 ─────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0
