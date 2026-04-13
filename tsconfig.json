@@ -11,6 +11,7 @@
     ],
     "types": ["vite/client"],
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,

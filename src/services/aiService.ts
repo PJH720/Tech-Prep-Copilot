@@ -6,8 +6,105 @@ const ai = new OpenAI({
   dangerouslyAllowBrowser: true,
 });
 const OPENAI_MODEL = "gpt-4o-mini";
+const DEFAULT_INTERVIEW_QUESTION = "Could you tell me more about your most significant project?";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const BACKEND_TIMEOUT_MS = 4500;
+const COMPANY_KEYWORDS: Record<string, string[]> = {
+  toss: ["toss", "toss.tech", "toss.im"],
+  kakao: ["kakao", "tech.kakao.com"],
+  naver: ["naver", "d2.naver.com"],
+  coupang: ["coupang", "medium.com"],
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const assertNonEmptyContent = (
+  content: string | null | undefined,
+  context: string
+): string => {
+  if (typeof content !== "string" || content.trim().length === 0) {
+    throw new Error(`Received empty or invalid response from the LLM (${context}).`);
+  }
+  return content;
+};
+
+const parseJsonOrThrow = <T>(content: string, context: string): T => {
+  try {
+    return JSON.parse(content) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse LLM JSON response (${context}): ${message}`);
+  }
+};
+
+const isGapAnalysis = (value: unknown): value is GapAnalysis => {
+  if (!isRecord(value)) return false;
+  return (
+    isStringArray(value.strengths) &&
+    isStringArray(value.weaknesses) &&
+    isStringArray(value.recommendations) &&
+    isFiniteNumber(value.matchScore)
+  );
+};
+
+const isInterviewQuestionPayload = (value: unknown): value is { question: string } => {
+  if (!isRecord(value)) return false;
+  return typeof value.question === "string" && value.question.trim().length > 0;
+};
+
+const isInterviewFeedback = (value: unknown): value is InterviewMessage["feedback"] => {
+  if (!isRecord(value)) return false;
+  const hasReferenceQuote =
+    value.referenceQuote === undefined || typeof value.referenceQuote === "string";
+  return (
+    isFiniteNumber(value.accuracy) &&
+    isFiniteNumber(value.logic) &&
+    typeof value.suggestion === "string" &&
+    hasReferenceQuote
+  );
+};
+
+const normalizeCompanyId = (domainOrCompany = ""): string => {
+  const normalized = domainOrCompany.trim().toLowerCase();
+  if (!normalized) return "";
+  if (COMPANY_KEYWORDS[normalized]) return normalized;
+
+  const matchedEntry = Object.entries(COMPANY_KEYWORDS).find(([, keywords]) =>
+    keywords.some((keyword) => normalized.includes(keyword))
+  );
+  return matchedEntry?.[0] ?? "";
+};
+
+const fetchJsonWithTimeout = async <T>(
+  path: string,
+  payload: Record<string, unknown>,
+  timeoutMs = BACKEND_TIMEOUT_MS
+): Promise<T | null> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BACKEND_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 /**
  * Fetch relevant RAG context from the FastAPI backend.
@@ -15,73 +112,60 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
  * or null if the backend is unavailable (graceful degradation).
  */
 export const fetchRagInsights = async (
-  companyId: string,
   query: string,
+  domainOrCompany = "",
   topK = 3
 ): Promise<RagInsights> => {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/rag/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ company_id: companyId, query, top_k: topK }),
-    });
-    if (!res.ok) {
-      return { contextText: "", sources: [], ragAvailable: false };
-    }
-    const data: {
-      results: Array<{ content: string; title: string; source: string; score: number }>;
-      rag_available: boolean;
-    } = await res.json();
-    const sources: SourceItem[] = (data.results || []).map((item) => ({
-      content: item.content,
-      title: item.title,
-      source: item.source,
-      score: item.score,
-    }));
-    const contextText = sources
-      .map((source, i) => `[${i + 1}] ${source.title}\n${source.content}`)
-      .join("\n\n---\n\n");
-    return { contextText, sources, ragAvailable: Boolean(data.rag_available) };
-  } catch {
-    // Backend not running — degrade gracefully to prompt-only mode
+  const companyId = normalizeCompanyId(domainOrCompany);
+  const data = await fetchJsonWithTimeout<{
+    results: Array<{ content: string; title: string; source: string; score: number }>;
+    rag_available: boolean;
+  }>("/api/rag/search", { company_id: companyId, query, top_k: topK });
+
+  if (!data) {
     return { contextText: "", sources: [], ragAvailable: false };
   }
+
+  const sources: SourceItem[] = (data.results || []).map((item) => ({
+    content: item.content,
+    title: item.title,
+    source: item.source,
+    score: item.score,
+  }));
+  const contextText = sources
+    .map((source, i) => `[${i + 1}] ${source.title}\n${source.content}`)
+    .join("\n\n---\n\n");
+  return { contextText, sources, ragAvailable: Boolean(data.rag_available) };
 };
 
 export const getAgentBrief = async (
-  companyId: string,
   query: string,
+  domainOrCompany = "",
   topK = 3,
   maxResults = 5
 ): Promise<AgentBrief | null> => {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/agent/brief`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        company_id: companyId,
-        query,
-        top_k: topK,
-        max_results: maxResults,
-      }),
-    });
-    if (!res.ok) return null;
-    const data: {
-      summary: string;
-      rag_results: Array<{ content: string; title: string; source: string; score: number }>;
-      realtime_results: Array<{ content: string; title: string; source: string; score: number }>;
-      used_realtime_search: boolean;
-      rag_available: boolean;
-    } = await res.json();
-    return {
-      summary: data.summary,
-      ragResults: data.rag_results || [],
-      realtimeResults: data.realtime_results || [],
-      usedRealtimeSearch: data.used_realtime_search,
-      ragAvailable: data.rag_available,
-    };
-  } catch {
-    return null;
+  const companyId = normalizeCompanyId(domainOrCompany);
+  const data = await fetchJsonWithTimeout<{
+    summary: string;
+    rag_results: Array<{ content: string; title: string; source: string; score: number }>;
+    realtime_results: Array<{ content: string; title: string; source: string; score: number }>;
+    used_realtime_search: boolean;
+    rag_available: boolean;
+  }>("/api/agent/brief", {
+    company_id: companyId,
+    query,
+    top_k: topK,
+    max_results: maxResults,
+  });
+
+  if (!data) return null;
+
+  return {
+    summary: data.summary,
+    ragResults: data.rag_results || [],
+    realtimeResults: data.realtime_results || [],
+    usedRealtimeSearch: data.used_realtime_search,
+    ragAvailable: data.rag_available,
   }
 };
 
@@ -92,8 +176,8 @@ export const analyzeGap = async (
 ): Promise<{ analysis: GapAnalysis; sources: SourceItem[]; ragAvailable: boolean }> => {
   const rag = company
     ? await fetchRagInsights(
-        company.id,
-        `${company.name} engineering requirements ${jd.text.slice(0, 500)}`
+        `${company.name} engineering requirements ${jd.text.slice(0, 500)}`,
+        company.id
       )
     : { contextText: "", sources: [], ragAvailable: false };
   const ragSection = rag.contextText
@@ -130,17 +214,25 @@ export const analyzeGap = async (
     messages: [
       {
         role: "system",
-        content: "You are a senior IT recruitment consultant. Always return only valid JSON.",
+        content:
+          "You are a senior IT recruitment consultant. Ground your analysis in the provided Retrieved Engineering Context when available, and avoid inventing unsupported company details. Always return only valid JSON.",
       },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
   });
 
-  const responseText = response.choices[0]?.message?.content;
-  if (!responseText) throw new Error("Empty response from OpenAI (analyzeGap)");
+  const responseText = assertNonEmptyContent(
+    response.choices[0]?.message?.content,
+    "analyzeGap"
+  );
+  const parsed = parseJsonOrThrow<unknown>(responseText, "analyzeGap");
+  if (!isGapAnalysis(parsed)) {
+    throw new Error("Invalid response schema from the LLM (analyzeGap).");
+  }
+
   return {
-    analysis: JSON.parse(responseText),
+    analysis: parsed,
     sources: rag.sources,
     ragAvailable: rag.ragAvailable,
   };
@@ -154,9 +246,17 @@ export const generateInterviewQuestion = async (
   recentAssistantQuestions: string[] = []
 ): Promise<string> => {
   const historyText = history.map(m => `${m.role}: ${m.content}`).join("\n");
+  const resolvedContextSummary =
+    contextSummary ||
+    (
+      await getAgentBrief(
+        `${company.name} interview question grounded in resume context ${(historyText || resume.text).slice(0, 700)}`,
+        company.id
+      )
+    )?.summary;
   
-  const ragSection = contextSummary
-    ? `\n\nEngineering Context:\n${contextSummary}\n\nUse the context above to ask a grounded and specific question.`
+  const ragSection = resolvedContextSummary
+    ? `\n\nEngineering Context:\n${resolvedContextSummary}\n\nUse the context above as the primary grounding for your question. If context is missing for a claim, avoid fabricating details.`
     : "";
   const antiRepeatSection = recentAssistantQuestions.length
     ? `\n\nDo not repeat these previous interviewer questions:\n${recentAssistantQuestions.join("\n")}`
@@ -187,23 +287,28 @@ export const generateInterviewQuestion = async (
     messages: [
       {
         role: "system",
-        content: "You are a senior engineering interviewer. Always return only valid JSON.",
+        content:
+          "You are a senior engineering interviewer. When Engineering Context is provided, ground your question in it and avoid unsupported assumptions. Always return only valid JSON.",
       },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
   });
 
-  const responseText = response.choices[0]?.message?.content;
-  if (!responseText) {
-    return "Could you tell me more about your most significant project?";
-  }
-
   try {
-    const parsed: { question?: string } = JSON.parse(responseText);
-    return parsed.question?.trim() || "Could you tell me more about your most significant project?";
-  } catch {
-    return "Could you tell me more about your most significant project?";
+    const responseText = assertNonEmptyContent(
+      response.choices[0]?.message?.content,
+      "generateInterviewQuestion"
+    );
+    const parsed = parseJsonOrThrow<unknown>(responseText, "generateInterviewQuestion");
+    if (!isInterviewQuestionPayload(parsed)) {
+      throw new Error("Invalid response schema from the LLM (generateInterviewQuestion).");
+    }
+    return parsed.question.trim() || DEFAULT_INTERVIEW_QUESTION;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to build interview question from LLM response: ${message}`);
+    return DEFAULT_INTERVIEW_QUESTION;
   }
 };
 
@@ -213,8 +318,17 @@ export const evaluateAnswer = async (
   company: CompanyInfo,
   contextSummary?: string
 ): Promise<InterviewMessage['feedback']> => {
-  const ragSection = contextSummary
-    ? `\n\nEngineering Context for grading:\n${contextSummary}`
+  const resolvedContextSummary =
+    contextSummary ||
+    (
+      await getAgentBrief(
+        `${company.name} evaluate interview answer context. Question: ${question}. Answer: ${answer}`.slice(0, 900),
+        company.id
+      )
+    )?.summary;
+
+  const ragSection = resolvedContextSummary
+    ? `\n\nEngineering Context for grading:\n${resolvedContextSummary}\n\nUse this context as the primary evidence when scoring and feedback.`
     : "";
 
   const prompt = `
@@ -242,14 +356,21 @@ export const evaluateAnswer = async (
     messages: [
       {
         role: "system",
-        content: "You are a senior engineering interviewer. Always return only valid JSON.",
+        content:
+          "You are a senior engineering interviewer. Ground evaluation in provided Engineering Context when available and do not fabricate references. Always return only valid JSON.",
       },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
   });
 
-  const responseText = response.choices[0]?.message?.content;
-  if (!responseText) throw new Error("Empty response from OpenAI (evaluateAnswer)");
-  return JSON.parse(responseText);
+  const responseText = assertNonEmptyContent(
+    response.choices[0]?.message?.content,
+    "evaluateAnswer"
+  );
+  const parsed = parseJsonOrThrow<unknown>(responseText, "evaluateAnswer");
+  if (!isInterviewFeedback(parsed)) {
+    throw new Error("Invalid response schema from the LLM (evaluateAnswer).");
+  }
+  return parsed;
 };

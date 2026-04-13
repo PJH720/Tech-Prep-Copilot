@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card'
 import { ScrollArea } from './ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { Separator } from './ui/separator';
 import { useAppStore } from '../lib/store';
 import { generateInterviewQuestion, evaluateAnswer, getAgentBrief } from '../services/aiService';
 import { InterviewMessage } from '../types';
@@ -19,15 +18,18 @@ export const InterviewChat: React.FC = () => {
     interviewHistory,
     addInterviewMessage,
     setInterviewHistory,
-    isInterviewing: isLoading,
-    setIsInterviewing: setIsLoading
+    isInterviewing,
+    setIsInterviewing
   } = useAppStore();
   
   const [input, setInput] = useState('');
   // Refs: bottomAnchor for auto-scroll; historyRef to avoid stale closure in async handlers
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef(interviewHistory);
-  historyRef.current = interviewHistory;
+
+  useEffect(() => {
+    historyRef.current = interviewHistory;
+  }, [interviewHistory]);
 
   useEffect(() => {
     bottomAnchorRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,12 +38,12 @@ export const InterviewChat: React.FC = () => {
   const startInterview = async () => {
     if (!resume || !selectedCompany) return;
 
-    setIsLoading(true);
+    setIsInterviewing(true);
     setInterviewHistory([]);
     try {
       const brief = await getAgentBrief(
-        selectedCompany.id,
-        `${selectedCompany.name} interview starter question from resume context ${resume.text.slice(0, 400)}`
+        `${selectedCompany.name} interview starter question from resume context ${resume.text.slice(0, 400)}`,
+        selectedCompany.id
       );
       const contextSummary = brief?.summary;
       const question = await generateInterviewQuestion(resume, selectedCompany, [], contextSummary);
@@ -53,16 +55,17 @@ export const InterviewChat: React.FC = () => {
     } catch (err) {
       console.error('Failed to start interview:', err);
     } finally {
-      setIsLoading(false);
+      setIsInterviewing(false);
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !resume || !selectedCompany || isLoading) return;
+    if (!input.trim() || !resume || !selectedCompany || isInterviewing) return;
+    const submittedInput = input.trim();
 
     const userMessage: InterviewMessage = {
       role: 'user',
-      content: input,
+      content: submittedInput,
       timestamp: new Date().toISOString(),
     };
 
@@ -72,7 +75,7 @@ export const InterviewChat: React.FC = () => {
 
     addInterviewMessage(userMessage);
     setInput('');
-    setIsLoading(true);
+    setIsInterviewing(true);
 
     try {
       const recentAssistantQuestions = currentHistory
@@ -82,15 +85,15 @@ export const InterviewChat: React.FC = () => {
 
       // 1. Build orchestration context (RAG + optional realtime search)
       const brief = await getAgentBrief(
-        selectedCompany.id,
-        `${lastAssistantMessage?.content ?? ''} ${input}`.slice(0, 800)
+        `${lastAssistantMessage?.content ?? ''} ${submittedInput}`.slice(0, 800),
+        selectedCompany.id
       );
       const contextSummary = brief?.summary;
 
       // 2. Evaluate current answer
       const feedback = await evaluateAnswer(
         lastAssistantMessage?.content || '',
-        input,
+        submittedInput,
         selectedCompany,
         contextSummary
       );
@@ -118,7 +121,7 @@ export const InterviewChat: React.FC = () => {
     } catch (err) {
       console.error('Failed to process message:', err);
     } finally {
-      setIsLoading(false);
+      setIsInterviewing(false);
     }
   };
 
@@ -141,8 +144,8 @@ export const InterviewChat: React.FC = () => {
           <MessageSquare className="w-5 h-5 text-primary" />
           Mock Interview: {selectedCompany.name}
         </CardTitle>
-        <Button variant="ghost" size="sm" onClick={startInterview} disabled={isLoading}>
-          <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+        <Button variant="ghost" size="sm" onClick={startInterview} disabled={isInterviewing}>
+          <RefreshCw className={cn("w-4 h-4 mr-2", isInterviewing && "animate-spin")} />
           Reset
         </Button>
       </CardHeader>
@@ -156,8 +159,8 @@ export const InterviewChat: React.FC = () => {
               <p className="text-sm text-muted-foreground mb-6">
                 The AI will act as a senior engineer from {selectedCompany.name}.
               </p>
-              <Button onClick={startInterview} disabled={isLoading}>
-                {isLoading ? <Loader2 className="animate-spin mr-2" /> : null}
+              <Button onClick={startInterview} disabled={isInterviewing}>
+                {isInterviewing ? <Loader2 className="animate-spin mr-2" /> : null}
                 Start Interview
               </Button>
             </div>
@@ -225,7 +228,7 @@ export const InterviewChat: React.FC = () => {
                 ))}
               </AnimatePresence>
               <div ref={bottomAnchorRef} />
-              {isLoading && (
+              {isInterviewing && (
                 <div className="flex gap-3 mr-auto">
                   <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
                     <Bot size={16} />
@@ -253,13 +256,13 @@ export const InterviewChat: React.FC = () => {
                 handleSend();
               }
             }}
-            disabled={interviewHistory.length === 0 || isLoading}
+            disabled={interviewHistory.length === 0 || isInterviewing}
           />
           <Button 
             size="icon" 
             className="h-[80px] w-[60px] shrink-0" 
             onClick={handleSend}
-            disabled={!input.trim() || isLoading || interviewHistory.length === 0}
+            disabled={!input.trim() || isInterviewing || interviewHistory.length === 0}
           >
             <Send className="w-5 h-5" />
           </Button>

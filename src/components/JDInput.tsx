@@ -15,7 +15,7 @@ export const JDInput: React.FC = () => {
     setAnalysis,
     setAnalysisSources,
     setIsAnalyzing,
-    isAnalyzing: isLoading
+    isAnalyzing
   } = useAppStore();
   // Sync local text with store — handles external resets (e.g. resetAll())
   const [text, setText] = React.useState(jd?.text || '');
@@ -60,10 +60,10 @@ export const JDInput: React.FC = () => {
         />
         <Button 
           className="w-full" 
-          disabled={!resume || !text || isLoading}
+          disabled={!resume || !text || isAnalyzing}
           onClick={handleAnalyze}
         >
-          {isLoading ? 'Analyzing...' : 'Analyze Fit'}
+          {isAnalyzing ? 'Analyzing...' : 'Analyze Fit'}
           <Send className="ml-2 w-4 h-4" />
         </Button>
         {!resume && (
