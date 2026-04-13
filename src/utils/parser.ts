@@ -1,4 +1,6 @@
-import pdfParse from "pdf-parse";
+// pdf-parse ships CJS only; the ESM stub has no default export.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 
 export async function parsePDF(buffer: Buffer): Promise<string> {
   if (!buffer || buffer.length === 0) {

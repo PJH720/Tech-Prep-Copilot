@@ -4,6 +4,7 @@ build/
 dist/
 coverage/
 .DS_Store
+._*
 *.log
 
 # ── 환경 변수 ─────────────────────────────────────────────────────────────────
@@ -32,3 +33,9 @@ notebooks/.ipynb_checkpoints/
 
 # ── 기타 ──────────────────────────────────────────────────────────────────────
 anaconda_projects/
+generate_pptx.py
+generate_pptx_kr.py
+Temp/
+.cursor/
+AGENTS.md
+CLAUDE.md

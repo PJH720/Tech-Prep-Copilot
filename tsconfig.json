@@ -9,6 +9,8 @@
       "DOM",
       "DOM.Iterable"
     ],
+    "types": ["vite/client"],
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,

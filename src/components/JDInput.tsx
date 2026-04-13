@@ -7,22 +7,36 @@ import { useAppStore } from '../lib/store';
 import { analyzeGap } from '../services/aiService';
 
 export const JDInput: React.FC = () => {
-  const { jd, setJD, resume, setAnalysis, setIsLoading, isLoading } = useAppStore();
+  const {
+    jd,
+    setJD,
+    resume,
+    selectedCompany,
+    setAnalysis,
+    setAnalysisSources,
+    setIsAnalyzing,
+    isAnalyzing: isLoading
+  } = useAppStore();
+  // Sync local text with store — handles external resets (e.g. resetAll())
   const [text, setText] = React.useState(jd?.text || '');
+  React.useEffect(() => {
+    setText(jd?.text || '');
+  }, [jd]);
 
   const handleAnalyze = async () => {
     if (!resume || !text) return;
     
-    setIsLoading(true);
+    setIsAnalyzing(true);
     try {
       const jdData = { text };
       setJD(jdData);
-      const result = await analyzeGap(resume, jdData);
-      setAnalysis(result);
+      const result = await analyzeGap(resume, jdData, selectedCompany ?? undefined);
+      setAnalysis(result.analysis);
+      setAnalysisSources(result.sources);
     } catch (err) {
       console.error('Analysis failed:', err);
     } finally {
-      setIsLoading(false);
+      setIsAnalyzing(false);
     }
   };
 

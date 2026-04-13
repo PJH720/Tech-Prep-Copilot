@@ -8,37 +8,43 @@ import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { useAppStore } from '../lib/store';
-import { generateInterviewQuestion, evaluateAnswer } from '../services/aiService';
+import { generateInterviewQuestion, evaluateAnswer, getAgentBrief } from '../services/aiService';
 import { InterviewMessage } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const InterviewChat: React.FC = () => {
-  const { 
-    resume, 
-    selectedCompany, 
-    interviewHistory, 
-    addInterviewMessage, 
+  const {
+    resume,
+    selectedCompany,
+    interviewHistory,
+    addInterviewMessage,
     setInterviewHistory,
-    isLoading,
-    setIsLoading 
+    isInterviewing: isLoading,
+    setIsInterviewing: setIsLoading
   } = useAppStore();
   
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Refs: bottomAnchor for auto-scroll; historyRef to avoid stale closure in async handlers
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef(interviewHistory);
+  historyRef.current = interviewHistory;
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    bottomAnchorRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [interviewHistory]);
 
   const startInterview = async () => {
     if (!resume || !selectedCompany) return;
-    
+
     setIsLoading(true);
     setInterviewHistory([]);
     try {
-      const question = await generateInterviewQuestion(resume, selectedCompany, []);
+      const brief = await getAgentBrief(
+        selectedCompany.id,
+        `${selectedCompany.name} interview starter question from resume context ${resume.text.slice(0, 400)}`
+      );
+      const contextSummary = brief?.summary;
+      const question = await generateInterviewQuestion(resume, selectedCompany, [], contextSummary);
       addInterviewMessage({
         role: 'assistant',
         content: question,
@@ -60,25 +66,50 @@ export const InterviewChat: React.FC = () => {
       timestamp: new Date().toISOString(),
     };
 
+    // Capture current history BEFORE any state mutations to avoid stale closures
+    const currentHistory = historyRef.current;
+    const lastAssistantMessage = [...currentHistory].reverse().find(m => m.role === 'assistant');
+
     addInterviewMessage(userMessage);
     setInput('');
     setIsLoading(true);
 
     try {
-      // 1. Evaluate current answer
-      const lastAssistantMessage = [...interviewHistory].reverse().find(m => m.role === 'assistant');
+      const recentAssistantQuestions = currentHistory
+        .filter((message) => message.role === 'assistant')
+        .slice(-5)
+        .map((message) => message.content);
+
+      // 1. Build orchestration context (RAG + optional realtime search)
+      const brief = await getAgentBrief(
+        selectedCompany.id,
+        `${lastAssistantMessage?.content ?? ''} ${input}`.slice(0, 800)
+      );
+      const contextSummary = brief?.summary;
+
+      // 2. Evaluate current answer
       const feedback = await evaluateAnswer(
         lastAssistantMessage?.content || '',
         input,
-        selectedCompany
+        selectedCompany,
+        contextSummary
       );
 
-      // Update the user message with feedback
-      const updatedHistory = [...interviewHistory, { ...userMessage, feedback }];
-      setInterviewHistory(updatedHistory);
+      // 3. Attach feedback to user message and write the full history atomically
+      const historyWithFeedback: InterviewMessage[] = [
+        ...currentHistory,
+        { ...userMessage, feedback },
+      ];
+      setInterviewHistory(historyWithFeedback);
 
-      // 2. Generate next question
-      const nextQuestion = await generateInterviewQuestion(resume, selectedCompany, updatedHistory);
+      // 4. Generate next question with updated history + RAG context
+      const nextQuestion = await generateInterviewQuestion(
+        resume,
+        selectedCompany,
+        historyWithFeedback,
+        contextSummary,
+        recentAssistantQuestions
+      );
       addInterviewMessage({
         role: 'assistant',
         content: nextQuestion,
@@ -117,7 +148,7 @@ export const InterviewChat: React.FC = () => {
       </CardHeader>
       
       <CardContent className="flex-1 overflow-hidden p-0">
-        <ScrollArea className="h-full p-4" viewportRef={scrollRef}>
+        <ScrollArea className="h-full p-4">
           {interviewHistory.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
               <Bot className="w-12 h-12 text-primary mb-4" />
@@ -193,6 +224,7 @@ export const InterviewChat: React.FC = () => {
                   </motion.div>
                 ))}
               </AnimatePresence>
+              <div ref={bottomAnchorRef} />
               {isLoading && (
                 <div className="flex gap-3 mr-auto">
                   <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">

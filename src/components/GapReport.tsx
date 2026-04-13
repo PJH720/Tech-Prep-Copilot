@@ -7,7 +7,7 @@ import { useAppStore } from '../lib/store';
 import { motion } from 'motion/react';
 
 export const GapReport: React.FC = () => {
-  const { analysis } = useAppStore();
+  const { analysis, analysisSources } = useAppStore();
 
   if (!analysis) return null;
 
@@ -97,6 +97,22 @@ export const GapReport: React.FC = () => {
           </ul>
         </CardContent>
       </Card>
+
+      {analysisSources.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Referenced Engineering Sources</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {analysisSources.slice(0, 5).map((source, index) => (
+              <div key={`${source.source}-${index}`} className="rounded-md border p-3 text-sm">
+                <p className="font-medium">{source.title || "Untitled Source"}</p>
+                <p className="text-xs text-muted-foreground break-all">{source.source}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </motion.div>
   );
 };

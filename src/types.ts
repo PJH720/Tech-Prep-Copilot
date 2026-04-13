@@ -17,6 +17,27 @@ export interface GapAnalysis {
   matchScore: number;
 }
 
+export interface SourceItem {
+  title: string;
+  source: string;
+  content: string;
+  score?: number;
+}
+
+export interface RagInsights {
+  contextText: string;
+  sources: SourceItem[];
+  ragAvailable: boolean;
+}
+
+export interface AgentBrief {
+  summary: string;
+  ragResults: SourceItem[];
+  realtimeResults: SourceItem[];
+  usedRealtimeSearch: boolean;
+  ragAvailable: boolean;
+}
+
 export interface InterviewMessage {
   role: 'user' | 'assistant';
   content: string;
