@@ -21,6 +21,7 @@ from typing import Optional
 
 from google import genai
 from google.genai import types as genai_types
+import openai as openai_lib
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -41,8 +42,11 @@ COLLECTION_NAME = "finance_tech"
 EMBED_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-m3")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash-lite"
+OPENAI_MODEL = "gpt-4o-mini"
 gemini_client = genai.Client(api_key=GOOGLE_API_KEY) if GOOGLE_API_KEY else None
+openai_client = openai_lib.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # ── 면접관 페르소나 정의 ──────────────────────────────────────────────────────
 INTERVIEWER_PERSONAS: dict[str, dict] = {
@@ -591,22 +595,39 @@ def _sanitize(text: str) -> str:
     return "".join(ch for ch in text if not (0xD800 <= ord(ch) <= 0xDFFF))
 
 
-def _gemini_generate(system_prompt: str, user_prompt: str) -> str:
-    """Synchronous Gemini call — run via asyncio.to_thread in endpoints."""
-    if gemini_client is None:
-        raise HTTPException(status_code=503, detail="GOOGLE_API_KEY가 설정되지 않았습니다.")
-    # 입력 프롬프트 정제 — context_summary 등 외부 데이터에 surrogate가 섞여 올 수 있음
-    response = gemini_client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=_sanitize(user_prompt),
-        config=genai_types.GenerateContentConfig(
-            system_instruction=_sanitize(system_prompt),
-            response_mime_type="application/json",
-        ),
+def _llm_generate(system_prompt: str, user_prompt: str) -> str:
+    """LLM call — Gemini if GOOGLE_API_KEY set, OpenAI fallback if OPENAI_API_KEY set."""
+    if gemini_client is not None:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=_sanitize(user_prompt),
+            config=genai_types.GenerateContentConfig(
+                system_instruction=_sanitize(system_prompt),
+                response_mime_type="application/json",
+            ),
+        )
+        if not response.text:
+            raise HTTPException(status_code=502, detail="Gemini로부터 빈 응답을 받았습니다.")
+        return _sanitize(response.text)
+
+    if openai_client is not None:
+        response = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": _sanitize(system_prompt)},
+                {"role": "user", "content": _sanitize(user_prompt)},
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content or ""
+        if not content.strip():
+            raise HTTPException(status_code=502, detail="OpenAI로부터 빈 응답을 받았습니다.")
+        return _sanitize(content)
+
+    raise HTTPException(
+        status_code=503,
+        detail="LLM API 키가 설정되지 않았습니다. GOOGLE_API_KEY 또는 OPENAI_API_KEY를 .env에 설정하세요.",
     )
-    if not response.text:
-        raise HTTPException(status_code=502, detail="Gemini로부터 빈 응답을 받았습니다.")
-    return _sanitize(response.text)
 
 
 @app.post("/api/agent/brief", response_model=AgentBriefResponse)
@@ -697,7 +718,7 @@ async def generate_interview_question(req: InterviewQuestionRequest):
     )
 
     try:
-        raw = await asyncio.to_thread(_gemini_generate, system_prompt, user_prompt)
+        raw = await asyncio.to_thread(_llm_generate, system_prompt, user_prompt)
         parsed = json.loads(raw)
         question = parsed.get("question", "").strip()
         if not question:
@@ -747,7 +768,7 @@ async def evaluate_interview_answer(req: EvaluateAnswerRequest):
     )
 
     try:
-        raw = await asyncio.to_thread(_gemini_generate, system_prompt, user_prompt)
+        raw = await asyncio.to_thread(_llm_generate, system_prompt, user_prompt)
         parsed = json.loads(raw)
         return EvaluateAnswerResponse(
             accuracy=int(parsed.get("accuracy", 50)),
@@ -822,7 +843,7 @@ async def interview_turn(req: InterviewTurnRequest):
     )
 
     try:
-        raw = await asyncio.to_thread(_gemini_generate, system_prompt, user_prompt)
+        raw = await asyncio.to_thread(_llm_generate, system_prompt, user_prompt)
         parsed = json.loads(raw)
         fb = parsed.get("feedback", {})
         next_q = parsed.get("question", "").strip()
