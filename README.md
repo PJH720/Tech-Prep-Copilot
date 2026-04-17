@@ -31,7 +31,7 @@ RAG 기반으로 JD 분석, 역량 갭 진단, 기술 면접 시뮬레이션을 
                                       │  · RAG 검색               │
                                       │  · 페르소나 면접 생성      │
                                       │  · 답변 평가 + 피드백      │
-                                      │  · Gemini LLM 연동        │
+                                      │  · Gemini / OpenAI 연동   │
                                       └───────────────────────────┘
 ```
 
@@ -64,15 +64,15 @@ cp .env.example .env
 
 | 변수 | 필수 | 설명 |
 |------|------|------|
-| `VITE_GOOGLE_API_KEY` | Gemini 사용 시 | Google AI Studio 키 — 갭분석 및 백엔드 면접 생성 |
+| `VITE_GOOGLE_API_KEY` | Gemini 사용 시 | Google AI Studio 키 — 프론트엔드 갭분석용 |
 | `GOOGLE_API_KEY` | Gemini 사용 시 | 백엔드 전용 Gemini 키 (위와 동일 값) |
-| `OPENAI_API_KEY` | OpenAI 사용 시 | Gemini 키 없을 때 갭분석 자동 fallback |
+| `OPENAI_API_KEY` | OpenAI 사용 시 | Gemini 키 없을 때 프론트엔드·백엔드 전체 fallback |
 | `VITE_BACKEND_URL` | 선택 | FastAPI 주소 (기본: `http://localhost:8000`) |
 | `TAVILY_API_KEY` | 선택 | 실시간 검색 보강용 |
 
 > **LLM 키는 둘 중 하나만 있으면 됩니다.**  
-> `VITE_GOOGLE_API_KEY` 설정 시 → Gemini 사용  
-> `OPENAI_API_KEY` 만 있을 시 → OpenAI 자동 사용 (기존 팀원 환경 호환)
+> - Gemini: `VITE_GOOGLE_API_KEY` + `GOOGLE_API_KEY` 설정  
+> - OpenAI: `OPENAI_API_KEY` 하나만 설정 → 갭분석·면접 시뮬레이션 **전체 기능** 동작
 
 ### 3. FastAPI 백엔드 실행 (면접 시뮬레이션 필수)
 
@@ -81,7 +81,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 > 백엔드가 없으면 역량 갭 리포트만 동작하고 면접 시뮬레이션은 비활성화됩니다.  
-> 백엔드는 반드시 `GOOGLE_API_KEY`(Gemini)가 설정되어 있어야 합니다.
+> 백엔드는 `GOOGLE_API_KEY`(Gemini) 또는 `OPENAI_API_KEY` 중 하나만 있으면 동작합니다.
 
 ### 4. 프론트엔드 실행
 
@@ -160,7 +160,7 @@ Tech-Prep-Copilot/
 │   └── lib/store.ts                  # Zustand 전역 상태
 │
 ├── backend/
-│   └── main.py                       # FastAPI (페르소나 면접, RAG, Gemini)
+│   └── main.py                       # FastAPI (페르소나 면접, RAG, Gemini/OpenAI)
 │
 ├── utils/                            # 데이터 파이프라인
 ├── test_gemini.py                    # Gemini API 키 확인 스크립트
