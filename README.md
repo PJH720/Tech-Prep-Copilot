@@ -23,7 +23,16 @@ RAG 기반으로 JD 분석, 역량 갭 진단, 기술 면접 시뮬레이션을 
 │  · 금융 키워드 필터  │               │  · JD 입력 / 이력서 업로드 │
 │  · finance_tech_    │               │  · 역량 갭 리포트          │
 │    content.json     │               │  · 면접 채팅 시뮬레이션    │
-└─────────────────────┘               └───────────────────────────┘
+└─────────────────────┘               │  · 페르소나 선택 면접관    │
+                                      └───────────────────────────┘
+                                                   ↕ REST API
+                                      ┌───────────────────────────┐
+                                      │ FastAPI 백엔드             │
+                                      │  · RAG 검색               │
+                                      │  · 페르소나 면접 생성      │
+                                      │  · 답변 평가 + 피드백      │
+                                      │  · Gemini / OpenAI 연동   │
+                                      └───────────────────────────┘
 ```
 
 ---
@@ -32,7 +41,7 @@ RAG 기반으로 JD 분석, 역량 갭 진단, 기술 면접 시뮬레이션을 
 
 ### 사전 요구사항
 - Node.js 18+
-- Python 3.11+
+- Python 3.11+ (Anaconda 환경 권장)
 
 ### 1. 저장소 클론 및 의존성 설치
 
@@ -43,9 +52,7 @@ cd Tech-Prep-Copilot
 # 프론트엔드
 npm install
 
-# Python 파이프라인 환경
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+# Python 백엔드 환경
 pip install -r requirements.txt
 ```
 
@@ -53,16 +60,50 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# .env 파일을 열어 아래 항목 입력
 ```
 
-| 변수 | 설명 |
-|------|------|
-| `OPENAI_API_KEY` | OpenAI API 키 (LLM 추론용) |
-| `TAVILY_API_KEY` | Tavily 검색 API 키 |
-| `GEMINI_API_KEY` | Gemini API 키 |
-| `CHROMA_DB_PATH` | ChromaDB 경로 (기본: `./chroma_db`) |
-| `EMBEDDING_MODEL_NAME` | 임베딩 모델 (기본: `BAAI/bge-m3`) |
+| 변수 | 필수 | 설명 |
+|------|------|------|
+| `VITE_GOOGLE_API_KEY` | Gemini 사용 시 | Google AI Studio 키 — 프론트엔드 갭분석용 |
+| `GOOGLE_API_KEY` | Gemini 사용 시 | 백엔드 전용 Gemini 키 (위와 동일 값) |
+| `OPENAI_API_KEY` | OpenAI 사용 시 | Gemini 키 없을 때 프론트엔드·백엔드 전체 fallback |
+| `VITE_BACKEND_URL` | 선택 | FastAPI 주소 (기본: `http://localhost:8000`) |
+| `TAVILY_API_KEY` | 선택 | 실시간 검색 보강용 |
+
+> **LLM 키는 둘 중 하나만 있으면 됩니다.**  
+> - Gemini: `VITE_GOOGLE_API_KEY` + `GOOGLE_API_KEY` 설정  
+> - OpenAI: `OPENAI_API_KEY` 하나만 설정 → 갭분석·면접 시뮬레이션 **전체 기능** 동작
+
+### 3. FastAPI 백엔드 실행 (면접 시뮬레이션 필수)
+
+```bash
+python -m uvicorn backend.main:app --reload --port 8000
+```
+
+> 백엔드가 없으면 역량 갭 리포트만 동작하고 면접 시뮬레이션은 비활성화됩니다.  
+> 백엔드는 `GOOGLE_API_KEY`(Gemini) 또는 `OPENAI_API_KEY` 중 하나만 있으면 동작합니다.
+
+### 4. 프론트엔드 실행
+
+```bash
+npm run dev
+# → http://localhost:3000
+```
+
+---
+
+## 면접 시뮬레이션 기능 (v0.2)
+
+### 페르소나 시스템
+
+4가지 면접관 유형 중 선택 가능. 각 페르소나의 두 면접관이 질문·피드백을 **랜덤으로 번갈아** 진행합니다.
+
+| 페르소나 | 면접관 A | 면접관 B | 특징 |
+|----------|----------|----------|------|
+| 🧊 나엄격 / 나친절 | 나엄격 (42세, 테크 리드) | 나친절 (32세, 시니어 개발자) | 압박 기술 검증 + 성장 코칭 |
+| 📈 마계산 / 오네트 | 마계산 (45세, 사업전략 본부장) | 오네트 (35세, 창업가 출신 PM) | ROI 임팩트 + 비즈니스 확장 |
+| 🏗️ 권스케일 / 이안정 | 권스케일 (45세, 인프라 아키텍트) | 이안정 (38세, 시니어 SRE) | 대규모 확장성 + SRE 실무 |
+| 💻 박알고 / 최코치 | 박알고 (38세, FAANG 인터뷰어) | 최코치 (33세, 코딩 코치) | 알고리즘 압박 + CS 기초 |
 
 ---
 
@@ -77,9 +118,9 @@ python utils/crawler.py
 
 | 소스 | 방식 | 수집량 |
 |------|------|--------|
-| toss.tech | 정적 HTML / `--js` 옵션으로 Playwright | ~300개 |
-| d2.naver.com | REST API (`/api/v1/contents`) | ~3,200개 |
-| tech.kakao.com | REST API (`/api/v2/posts`) | ~450개 |
+| toss.tech | 정적 HTML / Playwright | ~300개 |
+| d2.naver.com | REST API | ~3,200개 |
+| tech.kakao.com | REST API | ~450개 |
 
 ### Step 2 — 금융/핀테크 키워드 필터 크롤링
 
@@ -88,44 +129,19 @@ python utils/run_filter_crawl.py
 # → finance_tech_content.json 생성
 ```
 
-필터 키워드: `정산` `결제` `수수료` `원장` `이자` `회계` `세무` `부가세`  
-`bank` `pay` `settlement` `billing` `transaction` `tax` `accounting` 등
-
 ### Step 3 — 벡터 DB 구축 (Google Colab T4 권장)
 
 1. `utils/build_vectorstore_colab.ipynb` 를 Colab에 업로드
 2. **Runtime > Change runtime type > T4 GPU** 설정
-3. 셀 순서대로 실행 — `finance_tech_content.json` 업로드 포함
-4. 마지막 셀에서 `chroma_db.zip` 다운로드
-5. 프로젝트 루트에 압축 해제
+3. 셀 순서대로 실행 후 `chroma_db.zip` 다운로드
+4. 프로젝트 루트에 압축 해제
 
 ```
 Tech-Prep-Copilot/
-└── chroma_db/          ← 여기에 압축 해제
+└── chroma_db/
     ├── chroma.sqlite3
     └── ...
 ```
-
-> 로컬 CUDA GPU가 있으면 직접 실행도 가능합니다.
-> ```bash
-> python utils/build_vectorstore.py
-> ```
-
----
-
-## 프론트엔드 실행
-
-```bash
-npm run dev
-# → http://localhost:3000
-```
-
-| 화면 | 설명 |
-|------|------|
-| JD 입력 | 채용공고 텍스트 붙여넣기 → 핵심 기술 스택 자동 추출 |
-| 이력서 업로드 | PDF 업로드 → 경력 자동 파싱 |
-| 역량 갭 리포트 | JD vs 이력서 비교 → 부족한 역량 시각화 |
-| 면접 시뮬레이션 | 기술 블로그 RAG 기반 꼬리 질문 생성 |
 
 ---
 
@@ -133,25 +149,25 @@ npm run dev
 
 ```
 Tech-Prep-Copilot/
-├── src/                              # React + TypeScript 프론트엔드
+├── src/
 │   ├── components/
-│   │   ├── InterviewChat.tsx         # 면접 시뮬레이션
+│   │   ├── InterviewChat.tsx         # 면접 시뮬레이션 (페르소나 랜덤 교체)
+│   │   ├── PersonaSelector.tsx       # 면접관 페르소나 선택 UI
 │   │   ├── GapReport.tsx             # 역량 갭 리포트
 │   │   ├── JDInput.tsx               # JD 입력
 │   │   └── ResumeUploader.tsx        # 이력서 업로드
-│   ├── services/aiService.ts         # AI API 호출
+│   ├── services/aiService.ts         # LLM 호출 (Gemini/OpenAI 자동 선택)
 │   └── lib/store.ts                  # Zustand 전역 상태
 │
-├── utils/                            # Python 데이터 파이프라인
-│   ├── crawler.py                    # URL 수집 + 본문 크롤링
-│   ├── run_filter_crawl.py           # 키워드 필터 크롤링
-│   ├── build_vectorstore.py          # 로컬 벡터 DB 구축
-│   └── build_vectorstore_colab.ipynb # Colab용 벡터 DB 구축
+├── backend/
+│   └── main.py                       # FastAPI (페르소나 면접, RAG, Gemini/OpenAI)
 │
-├── chroma_db/                        # 벡터 DB (Colab에서 생성 후 배치, git 제외)
-├── requirements.txt                  # Python 의존성
-├── package.json                      # Node 의존성
-└── .env.example                      # 환경 변수 템플릿
+├── utils/                            # 데이터 파이프라인
+├── test_gemini.py                    # Gemini API 키 확인 스크립트
+├── chroma_db/                        # 벡터 DB (git 제외)
+├── requirements.txt
+├── package.json
+└── .env.example
 ```
 
 ---
@@ -161,7 +177,8 @@ Tech-Prep-Copilot/
 | 영역 | 기술 |
 |------|------|
 | 프론트엔드 | React 19, TypeScript, Vite, Tailwind CSS v4, Zustand |
-| AI / RAG | LangChain 0.3, OpenAI GPT-4o-mini, BAAI/bge-m3 |
-| 벡터 DB | ChromaDB |
+| AI / LLM | Gemini 2.5 Flash Lite (기본) / OpenAI GPT-4o-mini (fallback) |
+| RAG | LangChain 0.3, BAAI/bge-m3, ChromaDB |
+| 백엔드 | FastAPI, Uvicorn |
+| 실시간 검색 | Tavily API (선택) |
 | 크롤링 | requests, BeautifulSoup4, Playwright |
-| 서버 | FastAPI, Uvicorn |

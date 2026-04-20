@@ -39,3 +39,6 @@ Temp/
 .cursor/
 AGENTS.md
 CLAUDE.md
+
+# ── 로컬 개발용 임시 보관 (git 추적 제외) ─────────────────────────────────────
+_local_dev/

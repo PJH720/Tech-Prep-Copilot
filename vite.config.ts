@@ -8,9 +8,9 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY),
-      // VITE_BACKEND_URL is also readable via import.meta.env.VITE_BACKEND_URL
-      // because it is prefixed with VITE_ — no extra define needed.
+      // OpenAI key — 팀원용 (VITE_ 미접두 변수는 직접 define 필요)
+      'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY || ''),
+      // VITE_GOOGLE_API_KEY / VITE_BACKEND_URL 은 VITE_ 접두 덕분에 자동 노출
     },
     resolve: {
       alias: {

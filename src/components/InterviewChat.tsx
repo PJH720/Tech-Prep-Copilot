@@ -7,9 +7,10 @@ import { ScrollArea } from './ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { useAppStore } from '../lib/store';
-import { generateInterviewQuestion, evaluateAnswer, getAgentBrief } from '../services/aiService';
+import { generateInterviewQuestion, interviewTurn, getAgentBrief } from '../services/aiService';
 import { InterviewMessage } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { PersonaSelector, PersonaInfo, PERSONAS } from './PersonaSelector';
 
 export const InterviewChat: React.FC = () => {
   const {
@@ -21,9 +22,18 @@ export const InterviewChat: React.FC = () => {
     isInterviewing,
     setIsInterviewing
   } = useAppStore();
-  
+
   const [input, setInput] = useState('');
-  // Refs: bottomAnchor for auto-scroll; historyRef to avoid stale closure in async handlers
+  const [selectedPersonaId, setSelectedPersonaId] = useState('dual-strict');
+  const [loadedPersonas, setLoadedPersonas] = useState<PersonaInfo[]>(PERSONAS);
+  const [interviewStarted, setInterviewStarted] = useState(false);
+  const nextActiveCharRef = useRef<'interviewer' | 'feedback_giver'>('interviewer');
+
+  const selectedPersona = loadedPersonas.find(p => p.id === selectedPersonaId) ?? loadedPersonas[0];
+
+  const randomActiveChar = (): 'interviewer' | 'feedback_giver' =>
+    Math.random() < 0.5 ? 'interviewer' : 'feedback_giver';
+
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef(interviewHistory);
 
@@ -40,23 +50,39 @@ export const InterviewChat: React.FC = () => {
 
     setIsInterviewing(true);
     setInterviewHistory([]);
+    setInterviewStarted(true);
     try {
       const brief = await getAgentBrief(
         `${selectedCompany.name} interview starter question from resume context ${resume.text.slice(0, 400)}`,
         selectedCompany.id
       );
       const contextSummary = brief?.summary;
-      const question = await generateInterviewQuestion(resume, selectedCompany, [], contextSummary);
+      const activeChar = randomActiveChar();
+      const question = await generateInterviewQuestion(
+        resume,
+        selectedCompany,
+        [],
+        contextSummary,
+        [],
+        selectedPersonaId,
+        activeChar
+      );
       addInterviewMessage({
         role: 'assistant',
         content: question,
         timestamp: new Date().toISOString(),
+        asked_by: activeChar,
       });
     } catch (err) {
       console.error('Failed to start interview:', err);
     } finally {
       setIsInterviewing(false);
     }
+  };
+
+  const handleReset = () => {
+    setInterviewHistory([]);
+    setInterviewStarted(false);
   };
 
   const handleSend = async () => {
@@ -69,7 +95,6 @@ export const InterviewChat: React.FC = () => {
       timestamp: new Date().toISOString(),
     };
 
-    // Capture current history BEFORE any state mutations to avoid stale closures
     const currentHistory = historyRef.current;
     const lastAssistantMessage = [...currentHistory].reverse().find(m => m.role === 'assistant');
 
@@ -83,41 +108,42 @@ export const InterviewChat: React.FC = () => {
         .slice(-5)
         .map((message) => message.content);
 
-      // 1. Build orchestration context (RAG + optional realtime search)
       const brief = await getAgentBrief(
         `${lastAssistantMessage?.content ?? ''} ${submittedInput}`.slice(0, 800),
         selectedCompany.id
       );
-      const contextSummary = brief?.summary;
+      const contextSummary = brief?.summary ?? '';
 
-      // 2. Evaluate current answer
-      const feedback = await evaluateAnswer(
-        lastAssistantMessage?.content || '',
-        submittedInput,
-        selectedCompany,
-        contextSummary
-      );
+      const lastAskedBy = lastAssistantMessage?.asked_by ?? 'interviewer';
+      const nextActiveChar = randomActiveChar();
 
-      // 3. Attach feedback to user message and write the full history atomically
-      const historyWithFeedback: InterviewMessage[] = [
-        ...currentHistory,
-        { ...userMessage, feedback },
-      ];
-      setInterviewHistory(historyWithFeedback);
-
-      // 4. Generate next question with updated history + RAG context
-      const nextQuestion = await generateInterviewQuestion(
+      // 피드백 + 다음 질문을 Gemini 1회 호출로 처리
+      const turnResult = await interviewTurn(
         resume,
         selectedCompany,
-        historyWithFeedback,
+        currentHistory,
+        lastAssistantMessage?.content ?? '',
+        submittedInput,
         contextSummary,
-        recentAssistantQuestions
+        recentAssistantQuestions,
+        selectedPersonaId,
+        lastAskedBy,
+        nextActiveChar
       );
-      addInterviewMessage({
-        role: 'assistant',
-        content: nextQuestion,
-        timestamp: new Date().toISOString(),
-      });
+
+      if (turnResult) {
+        const historyWithFeedback: InterviewMessage[] = [
+          ...currentHistory,
+          { ...userMessage, feedback: turnResult.feedback },
+        ];
+        setInterviewHistory(historyWithFeedback);
+        addInterviewMessage({
+          role: 'assistant',
+          content: turnResult.nextQuestion,
+          timestamp: new Date().toISOString(),
+          asked_by: turnResult.nextAskedBy,
+        });
+      }
     } catch (err) {
       console.error('Failed to process message:', err);
     } finally {
@@ -129,45 +155,64 @@ export const InterviewChat: React.FC = () => {
     return (
       <Card className="flex flex-col items-center justify-center p-12 text-center bg-muted/30 border-dashed">
         <MessageSquare className="w-12 h-12 text-muted-foreground mb-4 opacity-20" />
-        <h3 className="text-lg font-semibold mb-2">Interview Ready?</h3>
+        <h3 className="text-lg font-semibold mb-2">면접 준비가 되셨나요?</h3>
         <p className="text-sm text-muted-foreground max-w-xs">
-          Please upload your resume and select a target company to start a mock interview.
+          이력서와 목표 회사를 선택하면 모의 면접을 시작할 수 있습니다.
         </p>
       </Card>
     );
   }
 
   return (
-    <Card className="flex flex-col h-[600px]">
-      <CardHeader className="border-bottom flex flex-row items-center justify-between py-4">
+    <Card className="flex flex-col h-[680px]">
+      <CardHeader className="border-b flex flex-row items-center justify-between py-4">
         <CardTitle className="flex items-center gap-2 text-lg">
           <MessageSquare className="w-5 h-5 text-primary" />
-          Mock Interview: {selectedCompany.name}
+          <span>모의 면접: {selectedCompany.name}</span>
+          {interviewStarted && selectedPersona && (
+            <span className="text-xs font-normal text-muted-foreground border rounded-full px-2 py-0.5">
+              {selectedPersona.emoji} {selectedPersona.name}
+            </span>
+          )}
         </CardTitle>
-        <Button variant="ghost" size="sm" onClick={startInterview} disabled={isInterviewing}>
+        <Button variant="ghost" size="sm" onClick={handleReset} disabled={isInterviewing}>
           <RefreshCw className={cn("w-4 h-4 mr-2", isInterviewing && "animate-spin")} />
-          Reset
+          초기화
         </Button>
       </CardHeader>
-      
+
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full p-4">
-          {interviewHistory.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <Bot className="w-12 h-12 text-primary mb-4" />
-              <h3 className="font-semibold">Ready to start?</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                The AI will act as a senior engineer from {selectedCompany.name}.
-              </p>
-              <Button onClick={startInterview} disabled={isInterviewing}>
+          {!interviewStarted ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-8 gap-6">
+              <div className="w-full max-w-md">
+                <PersonaSelector
+                  selectedPersonaId={selectedPersonaId}
+                  onSelect={setSelectedPersonaId}
+                  onPersonasLoaded={setLoadedPersonas}
+                  disabled={isInterviewing}
+                />
+              </div>
+              <Button onClick={startInterview} disabled={isInterviewing} size="lg">
                 {isInterviewing ? <Loader2 className="animate-spin mr-2" /> : null}
-                Start Interview
+                면접 시작
               </Button>
             </div>
           ) : (
             <div className="space-y-6">
               <AnimatePresence initial={false}>
-                {interviewHistory.map((msg, i) => (
+                {interviewHistory.map((msg, i) => {
+                  // 이 유저 메시지에 피드백을 준 캐릭터 = 직전 어시스턴트의 asked_by
+                  const prevAskedBy = interviewHistory
+                    .slice(0, i)
+                    .reverse()
+                    .find((m) => m.role === 'assistant')?.asked_by ?? 'interviewer';
+                  const feedbackGiverName = selectedPersona
+                    ? prevAskedBy === 'feedback_giver'
+                      ? selectedPersona.feedback_character
+                      : selectedPersona.interview_character
+                    : '';
+                  return (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
@@ -184,33 +229,46 @@ export const InterviewChat: React.FC = () => {
                       {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
                     <div className="space-y-2">
+                      {/* 발화자 이름 라벨 */}
+                      {msg.role === 'assistant' && selectedPersona && (
+                        <p className="text-[10px] text-muted-foreground font-medium pl-1">
+                          {selectedPersona.emoji}{' '}
+                          {msg.asked_by === 'feedback_giver'
+                            ? selectedPersona.feedback_character
+                            : selectedPersona.interview_character}
+                        </p>
+                      )}
                       <div className={cn(
                         "p-4 rounded-2xl text-sm leading-relaxed shadow-sm",
-                        msg.role === 'user' 
-                          ? "bg-primary text-primary-foreground rounded-tr-none" 
+                        msg.role === 'user'
+                          ? "bg-primary text-primary-foreground rounded-tr-none"
                           : "bg-muted/50 rounded-tl-none"
                       )}>
                         {msg.content}
                       </div>
-                      
+
                       {msg.feedback && (
-                        <motion.div 
+                        <motion.div
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           className="bg-card border rounded-xl p-3 space-y-3 shadow-sm"
                         >
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex gap-2">
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Accuracy: {msg.feedback.accuracy}%
-                              </Badge>
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                Logic: {msg.feedback.logic}%
-                              </Badge>
-                            </div>
+                          {/* 피드백 캐릭터 이름 */}
+                          {selectedPersona && (
+                            <p className="text-[10px] font-semibold text-green-700">
+                              💬 {feedbackGiverName}
+                            </p>
+                          )}
+                          <div className="flex gap-2">
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              정확도: {msg.feedback.accuracy}%
+                            </Badge>
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              논리: {msg.feedback.logic}%
+                            </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground italic">
-                            <span className="font-semibold text-foreground not-italic">Feedback: </span>
+                            <span className="font-semibold text-foreground not-italic">피드백: </span>
                             {msg.feedback.suggestion}
                           </p>
                           {msg.feedback.referenceQuote && (
@@ -225,7 +283,8 @@ export const InterviewChat: React.FC = () => {
                       )}
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </AnimatePresence>
               <div ref={bottomAnchorRef} />
               {isInterviewing && (
@@ -246,7 +305,7 @@ export const InterviewChat: React.FC = () => {
       <CardFooter className="p-4 border-t bg-muted/5">
         <div className="flex w-full gap-2">
           <Textarea
-            placeholder={interviewHistory.length === 0 ? "Start the interview first..." : "Type your answer..."}
+            placeholder={!interviewStarted ? "먼저 면접을 시작하세요..." : "답변을 입력하세요..."}
             className="min-h-[80px] resize-none"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -256,13 +315,13 @@ export const InterviewChat: React.FC = () => {
                 handleSend();
               }
             }}
-            disabled={interviewHistory.length === 0 || isInterviewing}
+            disabled={!interviewStarted || isInterviewing}
           />
-          <Button 
-            size="icon" 
-            className="h-[80px] w-[60px] shrink-0" 
+          <Button
+            size="icon"
+            className="h-[80px] w-[60px] shrink-0"
             onClick={handleSend}
-            disabled={!input.trim() || isInterviewing || interviewHistory.length === 0}
+            disabled={!input.trim() || isInterviewing || !interviewStarted}
           >
             <Send className="w-5 h-5" />
           </Button>
