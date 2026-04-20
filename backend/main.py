@@ -14,6 +14,7 @@ Requires:
 
 import asyncio
 import json
+import logging
 import os
 import re
 from contextlib import asynccontextmanager
@@ -31,9 +32,11 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel, Field
 from tavily import TavilyClient
 
-from backend.llm.failover import AllProvidersFailed, generate_chat_json
+from backend.llm.failover import AllProvidersFailed, PROVIDER_ORDER, generate_chat_json
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CHROMA_DIR = os.getenv("CHROMA_DB_PATH", "./chroma_db")
@@ -207,12 +210,13 @@ tavily_client: Optional[TavilyClient] = TavilyClient(api_key=TAVILY_API_KEY) if 
 async def lifespan(app: FastAPI):
     global vectorstore
     if not os.path.exists(CHROMA_DIR):
-        print(
-            f"[WARN] ChromaDB not found at '{CHROMA_DIR}'. "
-            "Run the Python pipeline first: python utils/build_vectorstore.py"
+        logger.warning(
+            "ChromaDB not found at '%s'. "
+            "Run the Python pipeline first: python utils/build_vectorstore.py",
+            CHROMA_DIR,
         )
     else:
-        print(f"Loading embeddings model: {EMBED_MODEL}")
+        logger.info("Loading embeddings model: %s", EMBED_MODEL)
         embeddings = HuggingFaceEmbeddings(
             model_name=EMBED_MODEL,
             encode_kwargs={"normalize_embeddings": True},
@@ -223,7 +227,7 @@ async def lifespan(app: FastAPI):
             persist_directory=CHROMA_DIR,
         )
         count = vectorstore._collection.count()
-        print(f"ChromaDB ready — {count} chunks in collection '{COLLECTION_NAME}'")
+        logger.info("ChromaDB ready -- %d chunks in collection '%s'", count, COLLECTION_NAME)
     yield
     # Cleanup (nothing to do for Chroma)
 
@@ -620,7 +624,7 @@ async def health():
         "collection_name": COLLECTION_NAME,
         "chunk_count": chunk_count,
         "tavily_ready": tavily_client is not None,
-        "llm_provider_order": os.getenv("LLM_PROVIDER_ORDER", "gemini,openai,upstage"),
+        "llm_provider_order": ",".join(PROVIDER_ORDER),
         "llm_gemini_configured": bool(
             os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
         ),
@@ -684,10 +688,9 @@ def _sanitize(text: str) -> str:
 
 
 def _llm_generate(system_prompt: str, user_prompt: str) -> str:
-    """Gemini → OpenAI → Upstage 순차 failover (LLM_PROVIDER_ORDER 로 재정렬 가능)."""
+    """멀티 프로바이더 페일오버. 순서는 `PROVIDER_ORDER`이며, 모듈 로드 시 `LLM_PROVIDER_ORDER` 환경 변수로 정해진다."""
     try:
-        text, provider = generate_chat_json(system_prompt, user_prompt)
-        print(f"[llm] ok provider={provider}")
+        text, _provider = generate_chat_json(system_prompt, user_prompt)
         return text
     except AllProvidersFailed as exc:
         raise HTTPException(
@@ -793,9 +796,7 @@ async def generate_interview_question(req: InterviewQuestionRequest):
         if not question:
             raise ValueError("empty question")
     except Exception as exc:
-        import traceback
-        print(f"[ERROR /api/interview/question] {type(exc).__name__}: {exc}")
-        traceback.print_exc()
+        logger.error("/api/interview/question failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"면접 질문 생성 실패: {type(exc).__name__}: {exc}")
 
     return InterviewQuestionResponse(
@@ -847,9 +848,7 @@ async def evaluate_interview_answer(req: EvaluateAnswerRequest):
             feedback_name=feedback_name,
         )
     except Exception as exc:
-        import traceback
-        print(f"[ERROR /api/interview/evaluate] {type(exc).__name__}: {exc}")
-        traceback.print_exc()
+        logger.error("/api/interview/evaluate failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"답변 평가 실패: {type(exc).__name__}: {exc}")
 
 
@@ -929,7 +928,5 @@ async def interview_turn(req: InterviewTurnRequest):
             next_asked_by=req.next_char,
         )
     except Exception as exc:
-        import traceback
-        print(f"[ERROR /api/interview/turn] {type(exc).__name__}: {exc}")
-        traceback.print_exc()
+        logger.error("/api/interview/turn failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"인터뷰 턴 처리 실패: {type(exc).__name__}: {exc}")
