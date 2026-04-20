@@ -7,7 +7,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { useAppStore } from '../lib/store';
-import { generateInterviewQuestion, interviewTurn, getAgentBrief } from '../services/aiService';
+import { generateInterviewQuestion, interviewTurn, getAgentBrief, evaluateAnswer } from '../services/aiService';
 import { InterviewMessage } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { PersonaSelector, PersonaInfo, PERSONAS } from './PersonaSelector';
@@ -27,7 +27,6 @@ export const InterviewChat: React.FC = () => {
   const [selectedPersonaId, setSelectedPersonaId] = useState('dual-strict');
   const [loadedPersonas, setLoadedPersonas] = useState<PersonaInfo[]>(PERSONAS);
   const [interviewStarted, setInterviewStarted] = useState(false);
-  const nextActiveCharRef = useRef<'interviewer' | 'feedback_giver'>('interviewer');
 
   const selectedPersona = loadedPersonas.find(p => p.id === selectedPersonaId) ?? loadedPersonas[0];
 
@@ -143,6 +142,46 @@ export const InterviewChat: React.FC = () => {
           timestamp: new Date().toISOString(),
           asked_by: turnResult.nextAskedBy,
         });
+      } else {
+        try {
+          const feedback = await evaluateAnswer(
+            lastAssistantMessage?.content ?? '',
+            submittedInput,
+            selectedCompany,
+            contextSummary,
+            selectedPersonaId,
+            lastAskedBy
+          );
+
+          const historyWithFeedback: InterviewMessage[] = [
+            ...currentHistory,
+            { ...userMessage, feedback },
+          ];
+          setInterviewHistory(historyWithFeedback);
+
+          const fallbackQuestion = await generateInterviewQuestion(
+            resume,
+            selectedCompany,
+            historyWithFeedback,
+            contextSummary,
+            recentAssistantQuestions,
+            selectedPersonaId,
+            nextActiveChar
+          );
+          addInterviewMessage({
+            role: 'assistant',
+            content: fallbackQuestion,
+            timestamp: new Date().toISOString(),
+            asked_by: nextActiveChar,
+          });
+        } catch (fallbackError) {
+          console.error('Fallback interview flow failed:', fallbackError);
+          addInterviewMessage({
+            role: 'assistant',
+            content: '응답 생성이 지연/실패했습니다. 다시 시도해주세요.',
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to process message:', err);

@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { ResumeData, JDData, GapAnalysis, InterviewMessage, CompanyInfo, RagInsights, SourceItem, AgentBrief } from "../types";
+import { BackendHealth } from "../lib/store";
 
 // Gemini — VITE_GOOGLE_API_KEY가 있으면 활성화
 const GEMINI_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "";
@@ -15,6 +16,7 @@ const openaiClient = OPENAI_KEY
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const BACKEND_TIMEOUT_MS = 4500;
+const INTERVIEW_TURN_TIMEOUT_MS = 30000;
 const COMPANY_KEYWORDS: Record<string, string[]> = {
   toss: ["toss", "toss.tech", "toss.im"],
   kakao: ["kakao", "tech.kakao.com"],
@@ -104,6 +106,35 @@ const fetchJsonWithTimeout = async <T>(
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+export const fetchBackendHealth = async (): Promise<BackendHealth | null> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/health`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<BackendHealth>;
+    if (typeof data.status !== "string") return null;
+    return {
+      status: data.status,
+      rag_ready: Boolean(data.rag_ready),
+      chunk_count: typeof data.chunk_count === "number" ? data.chunk_count : 0,
+      tavily_ready: Boolean(data.tavily_ready),
+      llm_provider_order:
+        typeof data.llm_provider_order === "string" ? data.llm_provider_order : "",
+      llm_gemini_configured: Boolean(data.llm_gemini_configured),
+      llm_openai_configured: Boolean(data.llm_openai_configured),
+      llm_upstage_configured: Boolean(data.llm_upstage_configured),
+    };
   } catch {
     return null;
   } finally {
@@ -371,7 +402,7 @@ export const interviewTurn = async (
   nextAskedBy: "interviewer" | "feedback_giver";
 } | null> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), INTERVIEW_TURN_TIMEOUT_MS);
   try {
     const res = await fetch(`${BACKEND_URL}/api/interview/turn`, {
       method: "POST",

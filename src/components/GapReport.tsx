@@ -98,13 +98,17 @@ export const GapReport: React.FC = () => {
         </CardContent>
       </Card>
 
-      {analysisSources.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">참고한 기술 블로그 (Relevance Score)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {analysisSources.slice(0, 5).map((source, index) => {
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">참고한 기술 블로그 (Relevance Score)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {analysisSources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              RAG 소스가 없어 Relevance Score를 표시할 수 없습니다. (RAG ready 상태 확인)
+            </p>
+          ) : (
+            analysisSources.slice(0, 5).map((source, index) => {
               const rawScore = typeof source.score === 'number' ? source.score : 0;
               const scorePct = Math.round(Math.max(0, Math.min(1, rawScore)) * 100);
               const tier =
@@ -145,10 +149,10 @@ export const GapReport: React.FC = () => {
                   )}
                 </div>
               );
-            })}
-          </CardContent>
-        </Card>
-      )}
+            })
+          )}
+        </CardContent>
+      </Card>
     </motion.div>
   );
 };
