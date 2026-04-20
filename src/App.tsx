@@ -6,7 +6,7 @@ import { InterviewChat } from './components/InterviewChat';
 import { CompanySelector } from './components/CompanySelector';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { useAppStore } from './lib/store';
-import { Rocket, FileSearch, MessageSquare, Building2, Info } from 'lucide-react';
+import { Rocket, FileSearch, MessageSquare, Building2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function App() {
@@ -25,12 +25,6 @@ export default function App() {
             <div>
               <h1 className="text-xl font-bold tracking-tight">Tech-Prep Copilot</h1>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">AI Career Agent</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-1 text-xs font-medium text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
-              <Info className="w-3 h-3" />
-              Powered by Gemini 3 Flash
             </div>
           </div>
         </div>
