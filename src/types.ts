@@ -42,6 +42,7 @@ export interface InterviewMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  asked_by?: 'interviewer' | 'feedback_giver'; // 질문한 캐릭터
   feedback?: {
     accuracy: number;
     logic: number;
