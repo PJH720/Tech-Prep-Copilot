@@ -101,15 +101,51 @@ export const GapReport: React.FC = () => {
       {analysisSources.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Referenced Engineering Sources</CardTitle>
+            <CardTitle className="text-base">참고한 기술 블로그 (Relevance Score)</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {analysisSources.slice(0, 5).map((source, index) => (
-              <div key={`${source.source}-${index}`} className="rounded-md border p-3 text-sm">
-                <p className="font-medium">{source.title || "Untitled Source"}</p>
-                <p className="text-xs text-muted-foreground break-all">{source.source}</p>
-              </div>
-            ))}
+          <CardContent className="space-y-3">
+            {analysisSources.slice(0, 5).map((source, index) => {
+              const rawScore = typeof source.score === 'number' ? source.score : 0;
+              const scorePct = Math.round(Math.max(0, Math.min(1, rawScore)) * 100);
+              const tier =
+                rawScore >= 0.7 ? 'high' : rawScore >= 0.5 ? 'mid' : 'low';
+              const tierStyle = {
+                high: 'bg-green-50 text-green-700 border-green-200',
+                mid: 'bg-amber-50 text-amber-700 border-amber-200',
+                low: 'bg-slate-50 text-slate-600 border-slate-200',
+              }[tier];
+              const tierLabel = { high: '높음', mid: '보통', low: '낮음' }[tier];
+
+              return (
+                <div
+                  key={`${source.source}-${index}`}
+                  className="rounded-md border p-3 text-sm space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium flex-1">{source.title || 'Untitled Source'}</p>
+                    <Badge variant="outline" className={tierStyle}>
+                      관련도 {tierLabel} · {scorePct}%
+                    </Badge>
+                  </div>
+                  <Progress value={scorePct} className="h-1.5" />
+                  {source.content && (
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {source.content}
+                    </p>
+                  )}
+                  {source.source && (
+                    <a
+                      href={source.source}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline break-all"
+                    >
+                      {source.source}
+                    </a>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}

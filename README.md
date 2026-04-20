@@ -31,7 +31,8 @@ RAG 기반으로 JD 분석, 역량 갭 진단, 기술 면접 시뮬레이션을 
                                       │  · RAG 검색               │
                                       │  · 페르소나 면접 생성      │
                                       │  · 답변 평가 + 피드백      │
-                                      │  · Gemini / OpenAI 연동   │
+                                      │  · LLM Failover (Gemini→   │
+                                      │    OpenAI→Upstage)        │
                                       └───────────────────────────┘
 ```
 
@@ -66,13 +67,17 @@ cp .env.example .env
 |------|------|------|
 | `VITE_GOOGLE_API_KEY` | Gemini 사용 시 | Google AI Studio 키 — 프론트엔드 갭분석용 |
 | `GOOGLE_API_KEY` | Gemini 사용 시 | 백엔드 전용 Gemini 키 (위와 동일 값) |
-| `OPENAI_API_KEY` | OpenAI 사용 시 | Gemini 키 없을 때 프론트엔드·백엔드 전체 fallback |
+| `OPENAI_API_KEY` | OpenAI 사용 시 | 2순위 LLM 및 프론트 갭분석 |
+| `UPSTAGE_API_KEY` | 선택 | 3순위 LLM ([Upstage Solar](https://developers.upstage.ai/), OpenAI 호환 API) |
+| `UPSTAGE_MODEL` | 선택 | 기본 `solar-pro` |
+| `LLM_PROVIDER_ORDER` | 선택 | 쉼표 구분 시도 순서, 기본 `gemini,openai,upstage` |
+| `LLM_TIMEOUT_SEC` | 선택 | 프로바이더당 HTTP 타임아웃(초), 기본 `60` |
 | `VITE_BACKEND_URL` | 선택 | FastAPI 주소 (기본: `http://localhost:8000`) |
 | `TAVILY_API_KEY` | 선택 | 실시간 검색 보강용 |
 
-> **LLM 키는 둘 중 하나만 있으면 됩니다.**  
-> - Gemini: `VITE_GOOGLE_API_KEY` + `GOOGLE_API_KEY` 설정  
-> - OpenAI: `OPENAI_API_KEY` 하나만 설정 → 갭분석·면접 시뮬레이션 **전체 기능** 동작
+> **백엔드 LLM**: `LLM_PROVIDER_ORDER` 순으로 호출하고, 장애·빈 응답 시 다음 프로바이더로 넘어갑니다.  
+> 최소 **Gemini**(`GOOGLE_API_KEY`) · **OpenAI** · **Upstage** 중 하나만 설정돼 있어도 면접·RAG 쿼리 확장이 동작합니다.  
+> **프론트 갭분석**은 여전히 `VITE_GOOGLE_API_KEY` 또는 `OPENAI_API_KEY`(브라우저)를 사용합니다.
 
 ### 3. FastAPI 백엔드 실행 (면접 시뮬레이션 필수)
 
@@ -81,7 +86,7 @@ python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 > 백엔드가 없으면 역량 갭 리포트만 동작하고 면접 시뮬레이션은 비활성화됩니다.  
-> 백엔드는 `GOOGLE_API_KEY`(Gemini) 또는 `OPENAI_API_KEY` 중 하나만 있으면 동작합니다.
+> 백엔드 LLM은 `GET /api/health`의 `llm_*_configured` 필드로 키 설정 여부를 확인할 수 있습니다.
 
 ### 4. 프론트엔드 실행
 
