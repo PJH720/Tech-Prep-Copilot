@@ -79,6 +79,19 @@ cp .env.example .env
 > 최소 **Gemini**(`GOOGLE_API_KEY`) · **OpenAI** · **Upstage** 중 하나만 설정돼 있어도 면접·RAG 쿼리 확장이 동작합니다.  
 > **프론트 갭분석**은 여전히 `VITE_GOOGLE_API_KEY` 또는 `OPENAI_API_KEY`(브라우저)를 사용합니다.
 
+### 2.5. 벡터 DB 설정 (빠른 시작)
+
+프로젝트에 포함된 사전 빌드 벡터 DB를 사용합니다:
+
+```bash
+# 자동 설정: 백엔드 시작 시 data/chroma_db1.zip 이 있으면 chroma_db/ 에 자동 압축 해제됩니다.
+# 수동 설정이 필요한 경우:
+unzip data/chroma_db1.zip -d chroma_db
+```
+
+> **참고**: `chroma_db/` 디렉토리는 약 150MB로 git에서 제외됩니다.  
+> 직접 벡터 DB를 구축하려면 아래 "데이터 파이프라인" 섹션을 참조하세요.
+
 ### 3. FastAPI 백엔드 실행 (면접 시뮬레이션 필수)
 
 ```bash

@@ -15,12 +15,14 @@ import io
 # Force UTF-8 output so Korean prints cleanly regardless of Windows console codepage.
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
+load_dotenv()
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
-CHROMA_DIR = "./chroma_db"
+CHROMA_DIR = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 COLLECTION_NAME = "finance_tech"
 EMBED_MODEL = "BAAI/bge-m3"
 TOP_K = 10

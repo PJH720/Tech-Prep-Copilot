@@ -128,6 +128,8 @@ export const fetchBackendHealth = async (): Promise<BackendHealth | null> => {
       status: data.status,
       rag_ready: Boolean(data.rag_ready),
       chunk_count: typeof data.chunk_count === "number" ? data.chunk_count : 0,
+      rag_setup_hint:
+        typeof data.rag_setup_hint === "string" ? data.rag_setup_hint : "",
       tavily_ready: Boolean(data.tavily_ready),
       llm_provider_order:
         typeof data.llm_provider_order === "string" ? data.llm_provider_order : "",

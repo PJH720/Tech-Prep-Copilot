@@ -16,6 +16,7 @@ export const JDInput: React.FC = () => {
     selectedCompany,
     setAnalysis,
     setAnalysisSources,
+    setAnalysisRagAvailable,
     analysisError,
     setAnalysisError,
     backendHealth,
@@ -57,6 +58,7 @@ export const JDInput: React.FC = () => {
       const result = await analyzeGap(resume, jdData, selectedCompany ?? undefined);
       setAnalysis(result.analysis);
       setAnalysisSources(result.sources);
+      setAnalysisRagAvailable(result.ragAvailable);
       setAnalysisError(null);
     } catch (err) {
       console.error('Analysis failed:', err);
@@ -97,8 +99,11 @@ export const JDInput: React.FC = () => {
             <Badge variant={backendHealth ? 'default' : 'destructive'}>
               {backendHealth ? 'Backend connected' : 'Backend disconnected'}
             </Badge>
-            <Badge variant={backendHealth?.rag_ready ? 'default' : 'secondary'}>
-              {backendHealth?.rag_ready ? `RAG ready (${backendHealth.chunk_count})` : 'RAG missing'}
+            <Badge
+              variant={backendHealth?.rag_ready ? 'default' : 'secondary'}
+              title={backendHealth?.rag_setup_hint || undefined}
+            >
+              {backendHealth?.rag_ready ? `RAG ready (${backendHealth.chunk_count})` : 'RAG not loaded'}
             </Badge>
             <Badge
               variant={
@@ -118,6 +123,12 @@ export const JDInput: React.FC = () => {
                 : 'LLM missing'}
             </Badge>
           </div>
+          {backendHealth && !backendHealth.rag_ready && backendHealth.rag_setup_hint && (
+            <p className="text-xs text-amber-600 mt-1">
+              <AlertCircle className="inline h-3 w-3 mr-1" />
+              {backendHealth.rag_setup_hint}
+            </p>
+          )}
         </div>
         <Textarea
           placeholder="Paste JD here..."

@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import zipfile
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -206,13 +207,36 @@ vectorstore: Optional[Chroma] = None
 tavily_client: Optional[TavilyClient] = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 
+CHROMA_ZIP_PATH = os.path.join("data", "chroma_db1.zip")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global vectorstore
+
+    # Auto-extract ChromaDB from shipped zip if directory is missing
+    if not os.path.exists(CHROMA_DIR) and os.path.exists(CHROMA_ZIP_PATH):
+        logger.info(
+            "ChromaDB directory '%s' not found. Extracting from '%s'...",
+            CHROMA_DIR, CHROMA_ZIP_PATH,
+        )
+        try:
+            os.makedirs(CHROMA_DIR, exist_ok=True)
+            with zipfile.ZipFile(CHROMA_ZIP_PATH, "r") as zf:
+                zf.extractall(CHROMA_DIR)
+            logger.info("ChromaDB extracted successfully to '%s'.", CHROMA_DIR)
+        except Exception as exc:
+            logger.error(
+                "Failed to extract ChromaDB from '%s': %s. "
+                "Please extract manually: unzip %s -d %s",
+                CHROMA_ZIP_PATH, exc, CHROMA_ZIP_PATH, CHROMA_DIR,
+            )
+
     if not os.path.exists(CHROMA_DIR):
         logger.warning(
-            "ChromaDB not found at '%s'. "
-            "Run the Python pipeline first: python utils/build_vectorstore.py",
+            "ChromaDB not found at '%s'. RAG features will be disabled. "
+            "To enable: (1) place chroma_db1.zip in data/ and restart, or "
+            "(2) run the pipeline: python utils/build_vectorstore.py",
             CHROMA_DIR,
         )
     else:
@@ -611,11 +635,23 @@ def _build_summary(rag_results: list[RagResult], realtime_results: list[Realtime
 @app.get("/api/health")
 async def health():
     chunk_count = 0
+    rag_setup_hint = ""
     if vectorstore is not None:
         try:
             chunk_count = int(vectorstore._collection.count())
         except Exception:
             chunk_count = 0
+    else:
+        if os.path.exists(CHROMA_ZIP_PATH):
+            rag_setup_hint = (
+                f"ChromaDB zip이 '{CHROMA_ZIP_PATH}'에 있지만 압축 해제에 실패했습니다. "
+                f"수동으로 시도하세요: unzip {CHROMA_ZIP_PATH} -d {CHROMA_DIR}"
+            )
+        else:
+            rag_setup_hint = (
+                "ChromaDB가 없습니다. data/chroma_db1.zip 을 배치하고 백엔드를 재시작하거나, "
+                "데이터 파이프라인을 실행하세요: python utils/build_vectorstore.py"
+            )
 
     return {
         "status": "ok",
@@ -623,6 +659,7 @@ async def health():
         "chroma_dir": CHROMA_DIR,
         "collection_name": COLLECTION_NAME,
         "chunk_count": chunk_count,
+        "rag_setup_hint": rag_setup_hint,
         "tavily_ready": tavily_client is not None,
         "llm_provider_order": ",".join(PROVIDER_ORDER),
         "llm_gemini_configured": bool(

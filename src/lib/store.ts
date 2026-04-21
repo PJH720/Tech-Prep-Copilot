@@ -5,6 +5,7 @@ export interface BackendHealth {
   status: string;
   rag_ready: boolean;
   chunk_count: number;
+  rag_setup_hint: string;
   tavily_ready: boolean;
   llm_provider_order: string;
   llm_gemini_configured: boolean;
@@ -17,6 +18,7 @@ interface AppState {
   jd: JDData | null;
   analysis: GapAnalysis | null;
   analysisSources: SourceItem[];
+  analysisRagAvailable: boolean;
   analysisError: string | null;
   backendHealth: BackendHealth | null;
   interviewHistory: InterviewMessage[];
@@ -28,6 +30,7 @@ interface AppState {
   setJD: (jd: JDData | null) => void;
   setAnalysis: (analysis: GapAnalysis | null) => void;
   setAnalysisSources: (sources: SourceItem[]) => void;
+  setAnalysisRagAvailable: (available: boolean) => void;
   setAnalysisError: (error: string | null) => void;
   setBackendHealth: (health: BackendHealth | null) => void;
   addInterviewMessage: (message: InterviewMessage) => void;
@@ -43,6 +46,7 @@ export const useAppStore = create<AppState>()((set) => ({
   jd: null,
   analysis: null,
   analysisSources: [],
+  analysisRagAvailable: false,
   analysisError: null,
   backendHealth: null,
   interviewHistory: [],
@@ -54,6 +58,7 @@ export const useAppStore = create<AppState>()((set) => ({
   setJD: (jd) => set({ jd }),
   setAnalysis: (analysis) => set({ analysis }),
   setAnalysisSources: (sources) => set({ analysisSources: sources }),
+  setAnalysisRagAvailable: (available) => set({ analysisRagAvailable: available }),
   setAnalysisError: (analysisError) => set({ analysisError }),
   setBackendHealth: (backendHealth) => set({ backendHealth }),
   addInterviewMessage: (message) => set((state) => ({
@@ -68,6 +73,7 @@ export const useAppStore = create<AppState>()((set) => ({
     jd: null,
     analysis: null,
     analysisSources: [],
+    analysisRagAvailable: false,
     analysisError: null,
     interviewHistory: [],
     selectedCompany: null,

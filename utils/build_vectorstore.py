@@ -20,13 +20,16 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import torch
+from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain.schema import Document
 
+load_dotenv()
+
 # ── 설정 ─────────────────────────────────────────────────────────────────────
 INPUT_FILE      = "finance_tech_content.json"
-CHROMA_DIR      = "chroma_db"          # 로컬 ChromaDB 저장 경로
+CHROMA_DIR      = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 COLLECTION_NAME = "finance_tech"
 CHUNK_SIZE      = 800                  # 청크 최대 글자 수
 CHUNK_OVERLAP   = 100                  # 청크 간 겹침 글자 수

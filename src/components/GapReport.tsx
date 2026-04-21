@@ -7,7 +7,7 @@ import { useAppStore } from '../lib/store';
 import { motion } from 'motion/react';
 
 export const GapReport: React.FC = () => {
-  const { analysis, analysisSources } = useAppStore();
+  const { analysis, analysisSources, analysisRagAvailable, backendHealth, selectedCompany } = useAppStore();
 
   if (!analysis) return null;
 
@@ -104,9 +104,31 @@ export const GapReport: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-3">
           {analysisSources.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              RAG 소스가 없어 Relevance Score를 표시할 수 없습니다. (RAG ready 상태 확인)
-            </p>
+            <div className="text-sm text-muted-foreground space-y-1">
+              {!selectedCompany ? (
+                <>
+                  <p>대상 기업을 선택하지 않아 기술 블로그 참조를 건너뛰었습니다.</p>
+                  <p className="text-xs">왼쪽에서 기업을 선택한 뒤 다시 분석하면 Relevance Score가 표시됩니다.</p>
+                </>
+              ) : !backendHealth ? (
+                <>
+                  <p>백엔드에 연결할 수 없어 RAG 검색이 실행되지 않았습니다.</p>
+                  <p className="text-xs">FastAPI 백엔드를 실행하세요: python -m uvicorn backend.main:app --port 8000</p>
+                </>
+              ) : !backendHealth.rag_ready ? (
+                <>
+                  <p>ChromaDB가 로드되지 않아 Relevance Score를 표시할 수 없습니다.</p>
+                  <p className="text-xs">
+                    {backendHealth.rag_setup_hint || '백엔드를 재시작하거나 README의 벡터 DB 설정 안내를 참조하세요.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>RAG 검색 결과가 비어 있습니다. (유사도 기준 미달)</p>
+                  <p className="text-xs">검색 쿼리와 일치하는 기술 블로그 콘텐츠를 찾지 못했습니다.</p>
+                </>
+              )}
+            </div>
           ) : (
             analysisSources.slice(0, 5).map((source, index) => {
               const rawScore = typeof source.score === 'number' ? source.score : 0;
