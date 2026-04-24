@@ -33,6 +33,7 @@ notebooks/.ipynb_checkpoints/
 
 # ── 기타 ──────────────────────────────────────────────────────────────────────
 anaconda_projects/
+E2E_CHECK_SCENARIOS.md
 generate_pptx.py
 generate_pptx_kr.py
 Temp/
