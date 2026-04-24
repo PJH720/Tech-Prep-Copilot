@@ -9,7 +9,7 @@ Collects and vectorizes real-world articles from major Korean tech blogs (Toss, 
 
 ### User Flow (GIF)
 
-<img src="docs/Screencast%20from%202026-04-23%2018-23-18-00.00.00.000-00.02.30.901.gif" alt="Tech-Prep Copilot Demo GIF" width="720" />
+<img src="docs/Screencast%20from%202026-04-23%2018-23-18-00.00.00.000-00.02.30.901.gif" alt="Tech-Prep Copilot Demo GIF" width="560" />
 
 > GitHub README renders GIFs as animations (not static images).
 

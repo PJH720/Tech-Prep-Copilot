@@ -12,7 +12,7 @@ For English documentation, see [README.en.md](README.en.md).
 
 ### 사용자 플로우 (GIF)
 
-<img src="docs/Screencast%20from%202026-04-23%2018-23-18-00.00.00.000-00.02.30.901.gif" alt="Tech-Prep Copilot 데모 GIF" width="720" />
+<img src="docs/Screencast%20from%202026-04-23%2018-23-18-00.00.00.000-00.02.30.901.gif" alt="Tech-Prep Copilot 데모 GIF" width="560" />
 
 > GitHub README는 GIF를 정적 이미지가 아니라 애니메이션으로 렌더링합니다.
 
