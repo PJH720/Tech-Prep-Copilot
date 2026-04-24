@@ -23,7 +23,6 @@ finance_tech_content.json
 final_vector_data.json
 
 # ── 벡터 DB (바이너리 — Colab 생성 후 로컬 배치) ─────────────────────────────
-chroma_db/
 data/*
 !data/*.zip
 
@@ -34,8 +33,6 @@ notebooks/.ipynb_checkpoints/
 # ── 기타 ──────────────────────────────────────────────────────────────────────
 anaconda_projects/
 E2E_CHECK_SCENARIOS.md
-generate_pptx.py
-generate_pptx_kr.py
 Temp/
 .cursor/
 AGENTS.md
