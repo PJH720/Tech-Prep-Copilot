@@ -25,6 +25,7 @@ final_vector_data.json
 # ── 벡터 DB (바이너리 — Colab 생성 후 로컬 배치) ─────────────────────────────
 data/*
 !data/*.zip
+chroma_db/
 
 # ── Jupyter ───────────────────────────────────────────────────────────────────
 .ipynb_checkpoints/
